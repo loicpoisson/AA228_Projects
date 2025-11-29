@@ -87,11 +87,81 @@ class LunarEnv:
         
         return feature_vector
 
-    # --- La méthode STEP retourne le vecteur de features ---
-    def step(self, action_idx):
-        # ... (Logique step inchangée) ...
-        # ... (à la fin de la méthode) ...
+    def _determine_actual_move(self, desired_action):
+        """
+        Détermine l'action de mouvement réelle en fonction de la stochasticité.
+        """
+        # L'action est-elle un mouvement (0, 1, 2, 3) ?
+        if desired_action not in [0, 1, 2, 3]:
+            return desired_action # Si c'est Collecter/Recharger, pas de glissement
         
+        if random.random() < self.slippage_chance:
+            # Glissement : Choisir une action aléatoire parmi les 4 mouvements
+            actual_move = random.choice([0, 1, 2, 3])
+            return actual_move
+        else:
+            return desired_action # Mouvement souhaité effectué
+
+    def step(self, action_idx):
+        """
+        Actions: 0: Haut, 1: Bas, 2: Gauche, 3: Droite, 4: Collecter, 5: Recharger
+        Retourne: feature_vector, reward, done
+        """
+        r, c = self.rover_pos
+        reward = -1 # Pénalité de temps (step cost)
+        done = False
+        
+        energy_cost = 1
+        
+        # --- 1. DÉTERMINER L'ACTION RÉELLE (STOCHASTICITÉ) ---
+        actual_action = self._determine_actual_move(action_idx)
+
+        new_r, new_c = r, c
+        
+        # --- 2. EXÉCUTION DE L'ACTION RÉELLE ---
+        if actual_action == 0: new_r = max(0, r - 1)
+        elif actual_action == 1: new_r = min(self.rows - 1, r + 1)
+        elif actual_action == 2: new_c = max(0, c - 1)
+        elif actual_action == 3: new_c = min(self.cols - 1, c + 1)
+        
+        # Action COLLECTER (seulement si l'action désirée était 4)
+        elif action_idx == 4: # On pénalise l'énergie si l'agent voulait forer
+            energy_cost = 5
+            if self.grid[r, c] == SAMPLE and self.payload < self.max_payload:
+                reward += 50
+                self.grid[r, c] = EMPTY
+                self.payload += 1
+            else:
+                reward -= 5
+        
+        # Action RECHARGER (seulement si l'action désirée était 5)
+        elif action_idx == 5:
+            energy_cost = 5 # Coût de l'attente
+            if self.grid[r, c] == BASE:
+                energy_gain = min(100, self.max_energy - self.energy) 
+                energy_cost = -energy_gain # Gain net
+            else:
+                reward -= 10
+        
+        # --- 3. MISE À JOUR DE L'ÉTAT ET VÉRIFICATIONS ---
+        
+        # Mise à jour de la position APRÈS le mouvement
+        self.rover_pos = (new_r, new_c)
+        r, c = self.rover_pos
+
+        # Vérification du terrain (si l'action était un mouvement)
+        if action_idx in [0, 1, 2, 3]: 
+            if self.grid[r, c] == OBSTACLE:
+                reward -= 20 
+                energy_cost += 10 
+        
+        # Gestion de l'énergie (min pour le plafond max_energy)
+        self.energy = min(self.max_energy, self.energy - energy_cost)
+        
+        if self.energy <= 0:
+            done = True
+            reward -= 100 
+            
         # Remplacement de get_state_dict() par get_feature_vector()
         return self.get_feature_vector(), reward, done
 

@@ -1,74 +1,100 @@
-# AA228 Final Project: Autonomous Lunar Rover
+# AA228 Final Project: Autonomous Lunar Rover with Deep RL
 
-## Autonomous Decision-Making for Lunar Regolith Sample Collection under Energy and Environmental Uncertainty
+## Autonomous Decision-Making for Lunar Regolith Sample Collection under Partial Observability
 
 **Course:** AA228/CS238 - Decision Making under Uncertainty  
 **Stanford University** **Team Members:**
 * Loïc Poisson
 * Martin Yitao
 * Jason Gunn
-
 ---
 
 ## 1. Project Overview
 
-As future lunar missions transition to sustained surface operations, autonomous rovers will play a pivotal role in identifying and gathering valuable regolith resources. This project focuses on designing a decision-making framework that allows a rover to search an uncertain lunar environment, manage limited energy, and collect high-value samples without continuous human supervision.
+As future lunar missions transition to sustained surface operations, autonomous rovers must operate efficiently in unknown environments with limited sensing capabilities. This project implements a **Deep Reinforcement Learning (Deep RL)** framework that enables a rover to search a stochastic lunar environment, manage its battery life, and collect high-value regolith samples without a pre-loaded map.
 
-We frame this task as a sequential decision-making problem. We simulate a lunar environment as a Grid World containing obstacles (craters), resources (regolith samples), and a base station. The agent uses **Model-Free Q-Learning** to learn an optimal policy to maximize sample collection while minimizing energy consumption and avoiding hazards.
+Unlike traditional planners that require full state knowledge, our agent operates under **Partial Observability**, making decisions based solely on local sensor readings and internal status.
 
 ## 2. Problem Formulation
 
-We model the problem as a Markov Decision Process (MDP) where the agent interacts with a stochastic environment.
+We model the problem as a **Partially Observable Markov Decision Process (POMDP)** treated as an MDP by using a history of local observations as the state input for a Neural Network.
 
-### State Space $S$
-The state of the rover is defined by a tuple:
-* **Position:** $(x, y)$ coordinates on the $M \times N$ grid.
-* **Energy:** Current battery level $e \in [0, E_{max}]$.
-* **Payload:** Amount of regolith collected $p$.
-* **Map Knowledge:** (In partial observability scenarios, this includes the local view of the grid).
+### State Space (Input Vector)
+The agent does not see the global grid coordinates $(x,y)$. Instead, the input state $S$ is a vector composed of:
+* **Local Sensor View:** A flattened $(2R+1) \times (2R+1)$ grid centered on the rover, representing the immediate terrain (obstacles, samples, empty space).
+* **Internal State:** Current normalized Energy level and Payload capacity.
 
 ### Action Space $A$
-The rover can take discrete actions at each time step:
-* **Move:** `{Up, Down, Left, Right}`. 
-  * *Dynamics:* Movement is stochastic; there is a small probability the rover slips or moves to an unintended adjacent cell due to terrain uncertainty.
-* **Collect:** Attempt to drill/scoop regolith at the current location.
+* **Discrete Actions:** `{Up, Down, Left, Right, Collect}`.
+* **Dynamics:** Movement is stochastic; terrain uncertainty introduces a probability of "slippage" where the rover might move to an unintended adjacent cell or stay in place.
 
 ### Reward Function $R(s, a)$
-The reward structure is designed to encourage efficiency and safety:
-* **Sample Collected:** `+50` (High reward for finding value).
-* **Step Cost:** `-1` (Time penalty to encourage speed).
-* **Obstacle Collision:** `-20` (Penalty for hitting rocks/craters).
-* **Empty Drill:** `-5` (Penalty for trying to collect where there is no sample).
-* **Battery Depletion:** `-100` (Terminal penalty if energy reaches 0).
+* **Sample Collected:** `+50`
+* **Step Cost:** `-1` (Encourages efficiency)
+* **Obstacle Collision:** `-20`
+* **Empty Drill:** `-5`
+* **Battery Depletion:** `-100` (Terminal state)
 
-## 3. Methodology: Q-Learning
+## 3. Methodology: Deep Q-Learning (DQN)
 
-Since the environment map is randomly generated and the transition probabilities (stochastic terrain) are not assumed to be known a priori by the agent, we utilize **Q-Learning**, a model-free Reinforcement Learning algorithm.
+To handle the combinatorial explosion of the state space caused by the local grid view, we utilize **Deep Q-Learning (DQN)**. Instead of a Q-Table, a Neural Network approximates the Q-value function $Q(s, a; \theta)$.
 
-The agent maintains a Q-Table $Q(s, a)$ and updates values based on the Bellman equation during exploration:
+### Network Architecture
+* **Input Layer:** Dimension corresponding to the local view size + scalar features (e.g., $5 \times 5 + 2 = 27$ inputs).
+* **Hidden Layers:** Two fully connected layers (128 and 64 neurons) with ReLU activation to capture non-linear terrain patterns.
+* **Output Layer:** Linear output layer size of $|A|$ (Q-values for each action).
 
-$$Q(s, a) \leftarrow Q(s, a) + \alpha [r + \gamma \max_{a'} Q(s', a') - Q(s, a)]$$
-
-Where:
-* $\alpha$ (Alpha): Learning rate.
-* $\gamma$ (Gamma): Discount factor.
-* An $\epsilon$-greedy strategy is implemented to balance exploration (trying random moves) and exploitation (using the best known strategy).
+### Key Algorithms Features
+1.  **Experience Replay:** Transitions $(s, a, r, s', done)$ are stored in a replay buffer to break correlations between consecutive samples during training.
+2.  **Target Network:** A separate network is used to calculate the target Q-values, updated periodically to stabilize training.
+3.  **$\epsilon$-Greedy Exploration:** Balances exploration of the unknown map with exploitation of the learned policy.
 
 ## 4. Project Structure
-
-The codebase is organized as follows:
 
 ```text
 lunar_rover_project/
 │
 ├── src/
 │   ├── __init__.py
-│   ├── environment.py    # GridWorld simulation, obstacle generation, and physics
-│   ├── agent.py          # Q-Learning agent implementation
-│   ├── rover.py          # Robot's dynamics (energy and movement)
-│   ├── sensors.py        # Gestion of the partial visibility
-│   └── utils.py          # Helper functions for visualization and logging
+│   ├── environment.py    # LunarEnv with stochasticity & partial observation
+│   ├── dqn_agent.py      # PyTorch implementation of DQN (Agent & QNetwork)
+│   └── utils.py          # Visualization tools
 │
-├── main.py               # Entry point to run training and simulation
-├── requirements.txt      # Python dependencies
+├── main.py               # Training loop and evaluation
+├── requirements.txt      # Dependencies (torch, numpy, etc.)
 └── README.md             # Project documentation
+```
+
+
+
+## 5. Installation and Usage
+Prerequisites
+Python 3.8+
+PyTorch
+NumPy
+Matplotlib
+
+### Installation
+* **Clone the repository:**
+Bash
+git clone [https://github.com/your-username/lunar_rover_project.git](https://github.com/your-username/lunar_rover_project.git)
+cd lunar_rover_project
+* **Install dependencies:**
+
+Bash
+pip install -r requirements.txt
+
+### Running the Training
+To train the DQN agent:
+Bash
+python main.py
+The script will initialize the environment, train the Neural Network over thousands of episodes, and periodically print the average reward and epsilon value.
+
+## 6. Future Improvements
+* **Convolutional Neural Networks (CNN):** If the sensor range increases significantly, using CNNs to process the local grid as an image would be more efficient than dense layers.
+
+* **Recurrent Q-Learning (DRQN):** Adding LSTM layers to handle state memory, allowing the rover to "remember" obstacles it passed recently but that are now out of view.
+
+* **Continuous Action Space:** Moving to algorithms like PPO or DDPG for more fluid rover control.
+
+Stanford University - AA228/CS238

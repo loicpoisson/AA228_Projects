@@ -1,71 +1,84 @@
 from src.environment import LunarEnv
-from src.agent import LFAAgent # Changement ici
+from src.dqn_agent import DQNAgent
 import numpy as np
+import torch
 import time
 
-def train_agent(episodes=100000): # Beaucoup plus d'épisodes pour l'approximation!
+def main():
+    # --- Hyperparameters & Configuration ---
+    EPISODES = 1000        # Total number of training episodes
+    GRID_SIZE = 10         # Size of the lunar grid (10x10)
+    MAX_PAYLOAD = 3        # Maximum samples the rover can carry
+    SENSOR_RANGE = 2       # Visibility radius (2 means a 5x5 local grid)
     
-    # 1. Définition des paramètres
-    GRID_SIZE = 10
-    MAX_PAYLOAD = 3
-    SENSOR_RANGE = 2 # 5x5 observation grid
-
-    # Calcul de la taille du vecteur de features
-    FEATURE_SIZE = (2 * SENSOR_RANGE + 1)**2 + 2 # (5*5) + Energy + Payload = 27
-    
-    # Initialisation de l'environnement
-    env = LunarEnv(rows=GRID_SIZE, cols=GRID_SIZE, n_obstacles=15, n_samples=5, 
-                   max_payload=MAX_PAYLOAD, slippage_chance=0.2, sensor_range=SENSOR_RANGE)
-    
-    # Initialisation de l'agent
-    agent = LFAAgent(
-        action_space_size=env.action_space_size,
-        feature_vector_size=FEATURE_SIZE,
-        alpha=0.001, # Taux d'apprentissage réduit pour l'approximation
-        gamma=0.95, # Augmenter gamma pour l'horizon long
-        epsilon=1.0 
+    # --- Environment Initialization ---
+    env = LunarEnv(
+        rows=GRID_SIZE, 
+        cols=GRID_SIZE, 
+        n_obstacles=15, 
+        n_samples=5, 
+        max_payload=MAX_PAYLOAD, 
+        slippage_chance=0.2, # Probability of stochastic movement (slipping)
+        sensor_range=SENSOR_RANGE
     )
+    
+    # --- Agent Initialization ---
+    # Calculate input state dimension: 
+    # Local Grid flattened ((2*R+1)^2) + Energy (1) + Payload (1)
+    state_size = (2 * SENSOR_RANGE + 1)**2 + 2 
+    action_size = env.action_space_size
+    
+    agent = DQNAgent(state_size, action_size)
+    
+    print(f"Starting DQN training on {EPISODES} episodes...")
+    print(f"Observation Space Size: {state_size}")
+    print(f"Action Space Size: {action_size}")
+    print("-" * 50)
 
-    print(f"Démarrage de l'entraînement LFA (Matrice W de taille {FEATURE_SIZE}x{env.action_space_size})...")
-    
     start_time = time.time()
-    rewards_history = []
-    
-    # 2. Boucle d'entraînement
-    for episode in range(episodes):
-        phi_s = env.reset() # Renvoie le vecteur de features initial
+    scores = [] # To track rewards over time
+
+    # --- Main Training Loop ---
+    for e in range(EPISODES):
+        state = env.reset() # Reset env and get initial state
         done = False
         total_reward = 0
         
         while not done:
-            action = agent.choose_action(phi_s)
+            # 1. Choose action (Epsilon-Greedy)
+            action = agent.choose_action(state)
             
-            # Action dans l'environnement
-            phi_next_s, reward, done = env.step(action)
+            # 2. Execute action in environment
+            next_state, reward, done = env.step(action)
             
-            # Apprentissage par l'agent
-            agent.learn(phi_s, action, reward, phi_next_s, done)
+            # 3. Store experience in Replay Buffer
+            agent.remember(state, action, reward, next_state, done)
             
-            phi_s = phi_next_s
+            # 4. Train the Neural Network (Experience Replay)
+            agent.replay()
+            
+            # 5. Update state
+            state = next_state
             total_reward += reward
-        
-        # 3. Mise à jour Epsilon et Logging
-        agent.update_epsilon()
-        rewards_history.append(total_reward)
-        
-        if (episode + 1) % 5000 == 0:
-            avg_reward = np.mean(rewards_history[-5000:])
-            print(f"Episode {episode + 1}/{episodes} | Avg Reward (5k): {avg_reward:.2f} | Epsilon: {agent.epsilon:.6f} | W_norm: {np.linalg.norm(agent.W):.2f}")
             
-    end_time = time.time()
-    
-    print("-" * 60)
-    print(f"Entraînement LFA terminé en {end_time - start_time:.2f} secondes.")
-    
-    # Note: La visualisation des résultats sera l'étape suivante.
+        # Update Target Network periodically to stabilize training
+        if e % 10 == 0:
+            agent.update_target_model()
+            
+        # Logging
+        scores.append(total_reward)
+        avg_score = np.mean(scores[-100:]) # Rolling average of last 100 episodes
+        
+        print(f"Episode {e+1}/{EPISODES} | Score: {total_reward:.1f} | Avg Score (100): {avg_score:.1f} | Epsilon: {agent.epsilon:.2f}")
 
-def main():
-    train_agent(episodes=100000)
+    end_time = time.time()
+    print("-" * 50)
+    print(f"Training finished in {end_time - start_time:.2f} seconds.")
+    
+    # --- Save the Model ---
+    model_filename = "lunar_rover_dqn.pth"
+    torch.save(agent.model.state_dict(), model_filename)
+    print(f"Model saved to {model_filename}")
 
 if __name__ == "__main__":
     main()

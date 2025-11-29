@@ -77,7 +77,7 @@ Matplotlib
 ### Installation
 * **Clone the repository:**
 Bash
-git clone [https://github.com/your-username/lunar_rover_project.git](https://github.com/your-username/lunar_rover_project.git)
+git clone [https://github.com/loicpoisson/AA228_Projects](https://github.com/loicpoisson/AA228_Projects)
 cd lunar_rover_project
 * **Install dependencies:**
 

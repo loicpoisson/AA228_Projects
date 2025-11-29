@@ -1,109 +1,74 @@
 import numpy as np
 import random
 
-class QLearningAgent:
+class LFAAgent:
     """
-    Agent Q-Learning pour le Rover Lunaire.
-    Utilise Q-Learning Tabulaire pour le moment.
+    Agent Q-Learning avec Approximation Linéaire de Fonction (LFA)
+    pour gérer la visibilité partielle (vecteur de features).
+    Q(s, a) = W * phi(s, a)
     """
-    def __init__(self, action_space_size, grid_rows, grid_cols, max_energy, max_payload, alpha=0.1, gamma=0.9, epsilon=1.0):
+    def __init__(self, action_space_size, feature_vector_size, alpha=0.001, gamma=0.9, epsilon=1.0):
         self.action_space_size = action_space_size
-        self.alpha = alpha  # Taux d'apprentissage
-        self.gamma = gamma  # Facteur d'escompte
-        self.epsilon = epsilon  # Taux d'exploration initiale
-        self.epsilon_min = 0.01 # Taux d'exploration minimum
-        self.epsilon_decay = 0.9999 # Taux de décroissance de l'exploration
+        self.feature_vector_size = feature_vector_size # (2R+1)^2 + 2 = 27 features
+        self.alpha = alpha
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_min = 0.01 
+        self.epsilon_decay = 0.99999 # Taux de décroissance très lent (50000+ itérations nécessaires)
         
-        # --- Définition de l'Espace d'État (pour indexer la table Q) ---
-        # L'énergie est trop grande (0-100), il faut la discrétiser.
-        # Simplification: discrétisation de l'énergie en 5 niveaux
-        self.energy_levels = 5 
-        
-        # Simplification: discrétisation du payload (nombre d'échantillons)
-        self.payload_levels = max_payload + 1 # De 0 à max_payload
-        
-        # Taille totale de la table Q
-        self.q_table_shape = (grid_rows, grid_cols, self.energy_levels, self.payload_levels, action_space_size)
-        self.q_table = np.zeros(self.q_table_shape)
-        
-        # Mémorisation des paramètres pour la conversion d'état
-        self._max_energy = max_energy
-        self._energy_step = max_energy / self.energy_levels
+        # --- Matrice de Poids W (W[i, a] est le poids de la feature i pour l'action a) ---
+        # Taille: [Feature Size x Action Size]
+        self.W = np.zeros((feature_vector_size, action_space_size))
 
-    def _discretize_state(self, state):
+    def _calculate_q_values(self, phi_s):
         """
-        Convertit l'état continu/complexe en index discrets pour la table Q.
-        Input: Dictionnaire d'état de l'environnement
-        Output: Tuple (row_idx, col_idx, energy_idx, payload_idx)
+        Calcule Q(s, a) pour toutes les actions a, via Q = phi(s)^T * W.
+        Input: phi_s (vecteur de features)
+        Output: vecteur des Q-values pour toutes les actions.
         """
-        r, c = state['position']
-        energy = state['energy']
-        payload = state['payload']
-        
-        # 1. Discrétisation de l'énergie: 
-        # Exemple: [100, 80) -> 4, [80, 60) -> 3, ..., [0, 20) -> 0
-        energy_idx = int(energy // self._energy_step)
-        # S'assurer que l'indice maximum est correct même si energy = max_energy
-        if energy == self._max_energy:
-            energy_idx = self.energy_levels - 1
-        
-        # 2. Payload (déjà discret)
-        payload_idx = payload
-        
-        return (r, c, energy_idx, payload_idx)
-
-    def choose_action(self, state):
+        # (Feature Size) x (Feature Size x Action Size) = (Action Size)
+        # La multiplication matricielle est la méthode la plus rapide.
+        return phi_s @ self.W
+    
+    def choose_action(self, phi_s):
         """
-        Stratégie Epsilon-Greedy pour choisir une action.
+        Stratégie Epsilon-Greedy.
+        Input: vecteur de features (phi_s)
         """
-        state_idx = self._discretize_state(state)
-        
         # 1. Exploration (random)
         if random.random() < self.epsilon:
             return random.randrange(self.action_space_size)
         
-        # 2. Exploitation (best action from Q-table)
-        q_values = self.q_table[state_idx]
-        # Si plusieurs actions ont la même valeur max, choisir aléatoirement parmi elles
-        best_action = np.argmax(q_values)
-        return int(best_action)
+        # 2. Exploitation (best action from W)
+        q_values = self._calculate_q_values(phi_s)
+        return int(np.argmax(q_values))
 
-    def learn(self, state, action, reward, next_state, done):
+    def learn(self, phi_s, action, reward, phi_next_s, done):
         """
-        Mise à jour de la table Q.
+        Mise à jour des poids W par la règle de la différence temporelle (TD).
         """
-        state_idx = self._discretize_state(state)
-        next_state_idx = self._discretize_state(next_state)
-
-        # 1. Obtenir l'ancienne Q-value
-        old_value = self.q_table[state_idx + (action,)]
-
-        # 2. Calculer le Q-value maximum de l'état suivant
+        
+        # 1. Calculer Q(s', a') max
         if done:
-            next_max = 0
+            next_max_q = 0
         else:
-            next_max = np.max(self.q_table[next_state_idx])
+            q_values_next = self._calculate_q_values(phi_next_s)
+            next_max_q = np.max(q_values_next)
         
-        # 3. Calcul de la nouvelle Q-value (cible)
-        new_value = reward + self.gamma * next_max
+        # 2. Calcul de la Cible (Target)
+        target = reward + self.gamma * next_max_q
         
-        # 4. Mise à jour de la table Q
-        self.q_table[state_idx + (action,)] = old_value + self.alpha * (new_value - old_value)
+        # 3. Calcul de l'Erreur TD
+        q_sa = np.dot(phi_s, self.W[:, action]) # Q(s, a) actuel
+        td_error = target - q_sa
+        
+        # 4. Mise à jour des Poids W (Gradient Ascent sur le LFA)
+        # Gradient ~ TD_Error * phi(s)
+        # W[:, a] <- W[:, a] + alpha * (TD_Error) * phi(s)
+        
+        # Mise à jour de la colonne de poids W associée à l'action prise
+        self.W[:, action] += self.alpha * td_error * phi_s
 
     def update_epsilon(self):
-        """
-        Décroissance du taux d'exploration.
-        """
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
-            # self.epsilon = max(self.epsilon_min, self.epsilon_decay * self.epsilon) # autre formule possible
-
-    def get_policy(self):
-        """
-        Retourne la politique optimale apprise (pour l'affichage/l'évaluation).
-        """
-        policy = np.zeros((self.q_table_shape[0], self.q_table_shape[1], self.q_table_shape[2], self.q_table_shape[3]), dtype=int)
-        
-        # On ne peut pas facilement générer une politique pour chaque état possible,
-        # mais la Q-table contient la politique (argmax)
-        return np.argmax(self.q_table, axis=-1)
+        """ Décroissance du taux d'exploration. """
+        self.epsilon = max(self.epsilon_min, self.epsilon * self.epsilon_decay)

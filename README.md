@@ -65,6 +65,8 @@ lunar_rover_project/
 │   ├── __init__.py
 │   ├── environment.py    # GridWorld simulation, obstacle generation, and physics
 │   ├── agent.py          # Q-Learning agent implementation
+│   ├── rover.py          # Robot's dynamics (energy and movement)
+│   ├── sensors.py        # Gestion of the partial visibility
 │   └── utils.py          # Helper functions for visualization and logging
 │
 ├── main.py               # Entry point to run training and simulation

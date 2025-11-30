@@ -3,6 +3,7 @@ from src.dqn_agent import DQNAgent
 import numpy as np
 import torch
 import time
+import evaluate
 
 def main():
     # --- Hyperparameters & Configuration ---
@@ -79,6 +80,36 @@ def main():
     model_filename = "lunar_rover_dqn.pth"
     torch.save(agent.model.state_dict(), model_filename)
     print(f"Model saved to {model_filename}")
+
+    
+    # --- VISUALISATION DES RÉSULTATS ---
+    import matplotlib.pyplot as plt
+    
+    plt.figure(figsize=(12, 6))
+    plt.plot(scores, label='Score par Episode', alpha=0.3)
+    
+    # Calcul de la moyenne mobile pour lisser la courbe
+    moving_avg = np.convolve(scores, np.ones(50)/50, mode='valid')
+    plt.plot(range(len(moving_avg)), moving_avg, label='Moyenne Mobile (50 épisodes)', color='red')
+    
+    plt.title('Performance du Deep Q-Learning (Lunar Rover)')
+    plt.xlabel('Épisodes')
+    plt.ylabel('Score Total')
+    plt.legend()
+    plt.grid(True)
+    plt.savefig('learning_curve.png') # Sauvegarde l'image
+    print("Graphique sauvegardé sous 'learning_curve.png'")
+    # plt.show()
+    
+    # --- LANCEMENT AUTOMATIQUE DE LA DÉMO ---
+    print("\n" + "="*50)
+    print("LANCEMENT DE LA DÉMONSTRATION AUTOMATIQUE")
+    print("="*50 + "\n")
+    
+    # On appelle la fonction run_demo() qui est dans evaluate.py
+    evaluate.run_demo()
+
+
 
 if __name__ == "__main__":
     main()

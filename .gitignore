@@ -1,0 +1,19 @@
+# Environnements virtuels
+venv/
+env/
+.env
+
+# Fichiers Python temporaires
+__pycache__/
+*.py[cod]
+
+# Fichiers système
+.DS_Store
+
+# Logs Slurm (Optionnel : gardez-les si vous voulez une trace)
+logs/
+*.out
+*.err
+
+# IDE (VS Code configuration locale)
+.vscode/

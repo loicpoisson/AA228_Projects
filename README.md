@@ -5,7 +5,7 @@
 **Course:** AA228/CS238 - Decision Making under Uncertainty  
 **Stanford University** **Team Members:**
 * Loïc Poisson
-* Martin Yitao
+* Martin Zhou
 * Jason Gunn
 ---
 

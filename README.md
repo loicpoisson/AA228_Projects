@@ -27,7 +27,7 @@ Unlike traditional planners that require full state knowledge, our agent operate
 * **HPC Deployment:** The training pipeline is optimized and successfully deployed on the Stanford FarmShare cluster (Slurm), enabling long-duration training (50,000+ episodes).
 
 ### 📊 Preliminary Results
-* **Stability:** The network has demonstrated excellent stability (no divergence/NaNs) during training runs of up to 20,000 episodes.
+* **Stability:** The network has demonstrated stability (no divergence/NaNs) during training runs of up to 20,000 episodes.
 * **Survival Learning:** The agent has successfully learned to avoid immediate penalties (collisions, time-wasting), improving the average reward from approx. `-700` (random/suicidal) to `-200`.
 * **Current Challenge:** The policy is currently stuck in a "survival" local optimum. It avoids death effectively but has not yet fully mastered the long-term planning required to consistently find and return samples for positive rewards.
 

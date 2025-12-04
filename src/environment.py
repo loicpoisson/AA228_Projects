@@ -14,6 +14,7 @@ class LunarEnv:
         self.cols = cols
         self.grid = np.zeros((rows, cols))
         self.start_pos = (0, 0)
+        self.base_pos = self.start_pos
         self.rover_pos = self.start_pos
         self.max_energy = 100
         self.max_payload = max_payload
@@ -158,9 +159,13 @@ class LunarEnv:
         # Gestion de l'énergie (min pour le plafond max_energy)
         self.energy = min(self.max_energy, self.energy - energy_cost)
         
-        if self.energy <= 0:
-            done = True
-            reward -= 100 
+       if self.energy <= 0:
+        done = True
+       if self.rover_pos == self.base_pos:
+        reward += 50  # success at home
+       else:
+        reward -= 100
+
             
         # Remplacement de get_state_dict() par get_feature_vector()
         return self.get_feature_vector(), reward, done

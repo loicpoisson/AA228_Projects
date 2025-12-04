@@ -2,6 +2,9 @@
 import torch
 import numpy as np
 import time
+import matplotlib.pyplot as plt
+from matplotlib.colors import ListedColormap
+import matplotlib.patches as patches
 from src.environment import LunarEnv
 from src.dqn_agent import DQNAgent
 
@@ -24,6 +27,58 @@ def render_console(env):
     print("="*20)
     print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload}")
 
+
+def save_trajectory(initial_grid, path, filename="trajectory.png"):
+    """
+    Generates and saves an image of the rover's path on the initial grid.
+    """
+    rows, cols = initial_grid.shape
+    fig, ax = plt.subplots(figsize=(8, 8))
+
+    # Define colors: 0=Empty(White), 1=Obstacle(Black), 2=Sample(Blue), 3=Base(Green)
+    cmap = ListedColormap(['white', 'black', 'blue', 'green'])
+    
+    # Display the grid (using the initial state to see where samples were)
+    ax.imshow(initial_grid, cmap=cmap, vmin=0, vmax=3)
+
+    # Draw grid lines
+    ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
+    ax.set_yticks(np.arange(-0.5, rows, 1), minor=True)
+    ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
+    
+    # Extract X (col) and Y (row) coordinates from the path
+    # Note: In imshow, X is the column index, Y is the row index.
+    path_rows = [p[0] for p in path]
+    path_cols = [p[1] for p in path]
+
+    # Plot the trajectory line
+    ax.plot(path_cols, path_rows, color='red', linewidth=3, marker='o', markersize=5, label='Path')
+
+    # Mark Start (Square) and End (X)
+    ax.scatter(path_cols[0], path_rows[0], c='lime', marker='s', s=150, edgecolors='black', label='Start (Base)', zorder=5)
+    ax.scatter(path_cols[-1], path_rows[-1], c='red', marker='X', s=150, edgecolors='black', label='End', zorder=5)
+
+    # Add legend and labels
+    # Create custom patches for the legend to represent grid items
+    legend_elements = [
+        patches.Patch(facecolor='white', edgecolor='gray', label='Empty'),
+        patches.Patch(facecolor='black', edgecolor='gray', label='Obstacle'),
+        patches.Patch(facecolor='blue', edgecolor='gray', label='Sample'),
+        patches.Patch(facecolor='green', edgecolor='gray', label='Base'),
+        plt.Line2D([0], [0], color='red', lw=3, label='Rover Path')
+    ]
+    ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.3, 1))
+    
+    ax.set_title("Autonomous Rover Trajectory")
+    ax.set_xlabel("Column")
+    ax.set_ylabel("Row")
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    print(f"\n[Info] Trajectory image saved as '{filename}'")
+    plt.close()
+
+
 def run_demo():
     # 1. Configuration identical to training
     GRID_SIZE = 10
@@ -45,6 +100,10 @@ def run_demo():
 
     # 4. Launch a mission
     state = env.reset()
+
+    initial_grid = env.grid.copy()  # Save initial grid layout (with samples)
+    path = [env.rover_pos]          # Initialize path with start position
+    
     done = False
     total_reward = 0
     steps = 0
@@ -64,6 +123,8 @@ def run_demo():
         state = next_state
         total_reward += reward
         steps += 1
+
+        path.append(env.rover_pos)
         
         # Rendering
         render_console(env)

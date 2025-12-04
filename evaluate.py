@@ -25,8 +25,8 @@ def render_console(env):
                 row_str += " ? "
         print(row_str + "|")
     print("="*20)
-    print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload}")
-
+    scientific_value = env.payload * 50   # Calculate and display scientific value
+    print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload} | Scientific Value: {scientific_value}")
 
 def save_trajectory(initial_grid, path, filename="trajectory.png"):
     """
@@ -135,3 +135,4 @@ def run_demo():
 
 if __name__ == "__main__":
     run_demo()
+

@@ -35,10 +35,11 @@ def render_console(env):
                     row_str += " ? "
         print(row_str + "|")
     print("="*20)
-    print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload}")
+    
+    scientific_value = env.payload * 50
+    print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload} | Scientific Value: {scientific_value}")
 
-
-def save_trajectory(initial_grid, path, filename="trajectory.png"):
+def save_trajectory(initial_grid, path, title="Autonomous Rover Trajectory", filename="trajectory.png"):
     """
     Generates and saves an image of the rover's path on the initial grid.
     """
@@ -115,7 +116,8 @@ def save_trajectory(initial_grid, path, filename="trajectory.png"):
     ]
     ax.legend(handles=legend_elements, loc='upper right', bbox_to_anchor=(1.3, 1))
     
-    ax.set_title("Autonomous Rover Trajectory")
+    # --- MODIFICATION 3: Use the dynamic title ---
+    ax.set_title(title)
     ax.set_xlabel("Column")
     ax.set_ylabel("Row")
 
@@ -183,12 +185,18 @@ def run_demo():
         print(f"Action: {env.actions[action]} | Reward: {reward}")
         time.sleep(0.8)  # Pause to follow visually
 
-    print(f"End of demo. Total Score: {total_reward}")
+    # --- MODIFICATION 4: Final print and pass title to save_trajectory ---
+    final_sci_value = env.payload * 50
+    print(f"End of demo. Total Score: {total_reward} | Final Scientific Value: {final_sci_value}")
 
-    # Optionally save trajectory visualization
-    save_trajectory(initial_grid, path, filename="trajectory.png")
+    # Optionally save trajectory visualization with dynamic title
+    save_trajectory(
+        initial_grid, 
+        path, 
+        title=f"Autonomous Rover Trajectory (Scientific Value: {final_sci_value})",
+        filename="trajectory.png"
+    )
 
 
 if __name__ == "__main__":
     run_demo()
-

@@ -10,9 +10,14 @@ class QNetwork(nn.Module):
     def __init__(self, input_dim, output_dim):
         super(QNetwork, self).__init__()
         # Entrée: Vue locale (aplati) + Energie + Payload
-        self.fc1 = nn.Linear(input_dim, 128)
-        self.fc2 = nn.Linear(128, 64)
-        self.fc3 = nn.Linear(64, output_dim) # Sortie: Q-value pour chaque action
+        if input_dim > 50:
+            v1 = 512; v2 = 256
+        else:
+            v1 = 128; v2 = 64
+
+        self.fc1 = nn.Linear(input_dim, v1)
+        self.fc2 = nn.Linear(v1, v2)
+        self.fc3 = nn.Linear(v2, output_dim) # Sortie: Q-value pour chaque action
 
     def forward(self, x):
         x = torch.relu(self.fc1(x))

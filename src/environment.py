@@ -11,7 +11,7 @@ SLOPE = 4
 class LunarEnv:
     
     def __init__(self, rows=10, cols=10, n_obstacles=15, n_samples=5,
-                 max_payload=3, slippage_chance=0.2, sensor_range=2):
+                 max_payload=3, slippage_chance=0.2, sensor_range=2, use_pomdp=True):
         self.rows = rows
         self.cols = cols
         self.grid = np.zeros((rows, cols))
@@ -22,6 +22,7 @@ class LunarEnv:
         self.max_payload = max_payload
         self.sensor_range = sensor_range
         self.slippage_chance = slippage_chance
+        self.use_pomdp = use_pomdp
         
         self.actions = {
             0: 'Up',
@@ -79,6 +80,12 @@ class LunarEnv:
         - Normalized energy
         - Normalized payload
         """
+
+        if not self.use_pomdp:
+            return np.concatenate([self.grid.flatten(), 
+                                   [self.energy/self.max_energy], 
+                                   [self.payload/self.max_payload]])
+
         r, c = self.rover_pos
         R = self.sensor_range
         

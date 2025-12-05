@@ -13,6 +13,7 @@ def main():
     MAX_PAYLOAD = 3         
     SENSOR_RANGE = 2        # Vue locale 5x5
     LOG_FREQUENCY = 250     # Fréquence d'affichage des logs
+    USE_POMDP = False # Flag for setting the problem to a MDP or POMDP
     
     # --- Environment Initialization ---
     env = LunarEnv(
@@ -22,12 +23,13 @@ def main():
         n_samples=5, 
         max_payload=MAX_PAYLOAD, 
         slippage_chance=0.2, 
-        sensor_range=SENSOR_RANGE
+        sensor_range=SENSOR_RANGE,
+        use_pomdp=USE_POMDP
     )
     
     # --- Agent Initialization ---
     # Input state dimension: Local Grid flattened + Energy + Payload
-    state_size = (2 * SENSOR_RANGE + 1)**2 + 2 
+    state_size = (2 * SENSOR_RANGE + 1)**2 + 2 if USE_POMDP else GRID_SIZE*GRID_SIZE + 2
     action_size = env.action_space_size
     
     agent = DQNAgent(state_size, action_size)

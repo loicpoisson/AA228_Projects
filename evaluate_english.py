@@ -5,24 +5,34 @@ import time
 import matplotlib.pyplot as plt
 from matplotlib.colors import ListedColormap
 import matplotlib.patches as patches
-from src.environment import LunarEnv
+
+from src.environment import LunarEnv, EMPTY, CRATER, SAMPLE, BASE, SLOPE
 from src.dqn_agent import DQNAgent
 
 # Function to render the grid in the console
 def render_console(env):
     grid_str = ""
-    symbols = {0: '.', 1: '#', 2: 'S', 3: 'B'} # . = Empty, # = Obstacle, S = Sample, B = Base
+    # . = Empty, C = Crater, L = Slope, S = Sample, B = Base
+    symbols = {
+        EMPTY: '.',
+        CRATER: 'C',
+        SLOPE: 'L',
+        SAMPLE: 'S',
+        BASE: 'B'
+    }
     
     print("\n" + "="*20)
     for r in range(env.rows):
         row_str = "|"
         for c in range(env.cols):
             if (r, c) == env.rover_pos:
-                row_str += " R " # The Rover
-            elif env.grid[r, c] in symbols:
-                row_str += f" {symbols[env.grid[r, c]]} "
+                row_str += " R "  # The Rover
             else:
-                row_str += " ? "
+                cell_type = env.grid[r, c]
+                if cell_type in symbols:
+                    row_str += f" {symbols[cell_type]} "
+                else:
+                    row_str += " ? "
         print(row_str + "|")
     print("="*20)
     print(f"Energy: {env.energy:.1f} | Payload: {env.payload}/{env.max_payload}")
@@ -35,11 +45,22 @@ def save_trajectory(initial_grid, path, filename="trajectory.png"):
     rows, cols = initial_grid.shape
     fig, ax = plt.subplots(figsize=(8, 8))
 
-    # Define colors: 0=Empty(White), 1=Obstacle(Black), 2=Sample(Blue), 3=Base(Green)
-    cmap = ListedColormap(['white', 'black', 'blue', 'green'])
+    # Define colors:
+    # 0 = Empty (White)
+    # 1 = Crater (Dark Gray)
+    # 2 = Sample (Blue)
+    # 3 = Base (Green)
+    # 4 = Slope (Light Gray)
+    cmap = ListedColormap([
+        'white',      # EMPTY
+        'dimgray',    # CRATER
+        'blue',       # SAMPLE
+        'green',      # BASE
+        'lightgray'   # SLOPE
+    ])
     
     # Display the grid (using the initial state to see where samples were)
-    ax.imshow(initial_grid, cmap=cmap, vmin=0, vmax=3)
+    ax.imshow(initial_grid, cmap=cmap, vmin=0, vmax=4)
 
     # Draw grid lines
     ax.set_xticks(np.arange(-0.5, cols, 1), minor=True)
@@ -47,22 +68,47 @@ def save_trajectory(initial_grid, path, filename="trajectory.png"):
     ax.grid(which='minor', color='gray', linestyle='-', linewidth=0.5)
     
     # Extract X (col) and Y (row) coordinates from the path
-    # Note: In imshow, X is the column index, Y is the row index.
     path_rows = [p[0] for p in path]
     path_cols = [p[1] for p in path]
 
     # Plot the trajectory line
-    ax.plot(path_cols, path_rows, color='red', linewidth=3, marker='o', markersize=5, label='Path')
+    ax.plot(
+        path_cols,
+        path_rows,
+        color='red',
+        linewidth=3,
+        marker='o',
+        markersize=5,
+        label='Path'
+    )
 
     # Mark Start (Square) and End (X)
-    ax.scatter(path_cols[0], path_rows[0], c='lime', marker='s', s=150, edgecolors='black', label='Start (Base)', zorder=5)
-    ax.scatter(path_cols[-1], path_rows[-1], c='red', marker='X', s=150, edgecolors='black', label='End', zorder=5)
+    ax.scatter(
+        path_cols[0],
+        path_rows[0],
+        c='lime',
+        marker='s',
+        s=150,
+        edgecolors='black',
+        label='Start (Base)',
+        zorder=5
+    )
+    ax.scatter(
+        path_cols[-1],
+        path_rows[-1],
+        c='red',
+        marker='X',
+        s=150,
+        edgecolors='black',
+        label='End',
+        zorder=5
+    )
 
-    # Add legend and labels
-    # Create custom patches for the legend to represent grid items
+    # Legend entries for grid items and path
     legend_elements = [
         patches.Patch(facecolor='white', edgecolor='gray', label='Empty'),
-        patches.Patch(facecolor='black', edgecolor='gray', label='Obstacle'),
+        patches.Patch(facecolor='dimgray', edgecolor='gray', label='Crater'),
+        patches.Patch(facecolor='lightgray', edgecolor='gray', label='Slope'),
         patches.Patch(facecolor='blue', edgecolor='gray', label='Sample'),
         patches.Patch(facecolor='green', edgecolor='gray', label='Base'),
         plt.Line2D([0], [0], color='red', lw=3, label='Rover Path')
@@ -86,13 +132,19 @@ def run_demo():
     state_size = (2 * SENSOR_RANGE + 1)**2 + 2 
     
     # 2. Load the environment and the agent
-    env = LunarEnv(rows=GRID_SIZE, cols=GRID_SIZE, n_obstacles=15, n_samples=5, sensor_range=SENSOR_RANGE)
+    env = LunarEnv(
+        rows=GRID_SIZE,
+        cols=GRID_SIZE,
+        n_obstacles=15,
+        n_samples=5,
+        sensor_range=SENSOR_RANGE
+    )
     agent = DQNAgent(state_size, env.action_space_size)
     
     # 3. Load trained weights
     try:
         agent.model.load_state_dict(torch.load("lunar_rover_dqn.pth"))
-        agent.model.eval() # Evaluation mode
+        agent.model.eval()  # Evaluation mode
         print("Model loaded successfully!")
     except FileNotFoundError:
         print("Error: The file 'lunar_rover_dqn.pth' does not exist. Run main.py first.")
@@ -112,7 +164,7 @@ def run_demo():
     render_console(env)
     time.sleep(1)
 
-    while not done and steps < 50: # Safety limit for the demo
+    while not done and steps < 50:  # Safety limit for the demo
         # Purely greedy action (no epsilon exploration)
         state_tensor = torch.FloatTensor(state).unsqueeze(0)
         with torch.no_grad():
@@ -129,9 +181,14 @@ def run_demo():
         # Rendering
         render_console(env)
         print(f"Action: {env.actions[action]} | Reward: {reward}")
-        time.sleep(0.8) # Pause to follow visually
+        time.sleep(0.8)  # Pause to follow visually
 
     print(f"End of demo. Total Score: {total_reward}")
 
+    # Optionally save trajectory visualization
+    save_trajectory(initial_grid, path, filename="trajectory.png")
+
+
 if __name__ == "__main__":
     run_demo()
+

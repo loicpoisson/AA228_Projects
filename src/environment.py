@@ -1,15 +1,17 @@
 import numpy as np
 import random
 
-# Types de terrain
+# Terrain types
 EMPTY = 0
-OBSTACLE = 1  
-SAMPLE = 2    
-BASE = 3      
+CRATER = 1
+SAMPLE = 2
+BASE = 3
+SLOPE = 4
 
 class LunarEnv:
     
-    def __init__(self, rows=10, cols=10, n_obstacles=15, n_samples=5, max_payload=3, slippage_chance=0.2, sensor_range=2):
+    def __init__(self, rows=10, cols=10, n_obstacles=15, n_samples=5,
+                 max_payload=3, slippage_chance=0.2, sensor_range=2):
         self.rows = rows
         self.cols = cols
         self.grid = np.zeros((rows, cols))
@@ -18,161 +20,185 @@ class LunarEnv:
         self.rover_pos = self.start_pos
         self.max_energy = 100
         self.max_payload = max_payload
-        self.sensor_range = sensor_range # Rayon du capteur
+        self.sensor_range = sensor_range
         self.slippage_chance = slippage_chance
         
-        self.actions = {0: 'Up', 1: 'Down', 2: 'Left', 3: 'Right', 4: 'Collect', 5: 'Recharge'}
+        self.actions = {
+            0: 'Up',
+            1: 'Down',
+            2: 'Left',
+            3: 'Right',
+            4: 'Collect',
+            5: 'Recharge'
+        }
         self.action_space_size = len(self.actions)
+
+        # Dictionary mapping sample coordinates → sample reward in [40, 60]
+        self.sample_rewards = {}
 
         self._generate_world(n_obstacles, n_samples)
         self.reset()
 
     def _generate_world(self, n_obstacles, n_samples):
-        # ... (Logique de génération de la grille inchangée) ...
+        """
+        Generates the world grid with:
+        - Base at (0,0)
+        - Obstacles, randomly CRATER or SLOPE
+        - A random number of samples (1 to n_samples), each with reward in [40, 60]
+        """
         self.grid = np.zeros((self.rows, self.cols))
-        self.grid[0, 0] = BASE
+        self.sample_rewards = {}
+
+        # Place base
+        self.grid[self.start_pos] = BASE
         
+        # Place obstacles
         for _ in range(n_obstacles):
-            r, c = random.randint(0, self.rows-1), random.randint(0, self.cols-1)
+            r, c = random.randint(0, self.rows - 1), random.randint(0, self.cols - 1)
             if (r, c) != self.start_pos and self.grid[r, c] == EMPTY:
-                self.grid[r, c] = OBSTACLE
+                obstacle_type = CRATER if random.random() < 0.5 else SLOPE
+                self.grid[r, c] = obstacle_type
                 
-        for _ in range(n_samples):
-            r, c = random.randint(0, self.rows-1), random.randint(0, self.cols-1)
+        # Choose a random number of samples
+        if n_samples > 0:
+            actual_samples = random.randint(1, n_samples)
+        else:
+            actual_samples = 0
+        
+        # Place samples and assign rewards
+        for _ in range(actual_samples):
+            r, c = random.randint(0, self.rows - 1), random.randint(0, self.cols - 1)
             if (r, c) != self.start_pos and self.grid[r, c] == EMPTY:
                 self.grid[r, c] = SAMPLE
-
+                self.sample_rewards[(r, c)] = random.randint(40, 60)
 
     def get_feature_vector(self):
         """
-        Génère un vecteur de caractéristiques (phi(s)) pour l'agent LFA.
-        Ceci est la représentation de l'état partiallement observable.
+        Returns the partially observable state representation:
+        - Local terrain patch (sensor window)
+        - Normalized energy
+        - Normalized payload
         """
         r, c = self.rover_pos
         R = self.sensor_range
         
-        # 1. Caractéristiques de l'environnement local (La vue du capteur)
-        
-        # Définir la fenêtre du capteur (-R à +R) -> (2R+1) x (2R+1)
+        # 1. Create local sensor window
         view_size = 2 * R + 1
-        local_view = np.full((view_size, view_size), -1.0) # -1.0 pour Inconnu
+        local_view = np.full((view_size, view_size), -1.0)  # Unknown = -1
         
-        # Coordonnées des bords
+        # Determine boundaries of visible region in the actual grid
         r_start_grid = max(0, r - R)
         r_end_grid = min(self.rows, r + R + 1)
         c_start_grid = max(0, c - R)
         c_end_grid = min(self.cols, c + R + 1)
         
-        # Coordonnées dans la matrice local_view (padding)
+        # Map grid region into the local view array (with padding)
         r_start_local = r_start_grid - (r - R)
         r_end_local = view_size - ((r + R + 1) - r_end_grid)
         c_start_local = c_start_grid - (c - R)
         c_end_local = view_size - ((c + R + 1) - c_end_grid)
 
-        # Copier la zone visible
+        # Copy visible grid into sensor window
         local_view[r_start_local:r_end_local, c_start_local:c_end_local] = \
             self.grid[r_start_grid:r_end_grid, c_start_grid:c_end_grid]
             
-        # 2. Concaténation des caractéristiques
-        
-        # Normalisation des caractéristiques continues (pour l'énergie/payload)
+        # 2. Append normalized energy and payload
         norm_energy = self.energy / self.max_energy
         norm_payload = self.payload / self.max_payload
         
-        # Vectorisation: [local_grid_flattened, norm_energy, norm_payload]
-        feature_vector = np.concatenate([
+        return np.concatenate([
             local_view.flatten(),
             [norm_energy],
             [norm_payload]
         ])
-        
-        return feature_vector
 
     def _determine_actual_move(self, desired_action):
         """
-        Détermine l'action de mouvement réelle en fonction de la stochasticité.
+        Applies slippage: with probability slippage_chance,
+        the rover moves in a random direction instead of the chosen one.
+        No slippage for Collect/Recharge.
         """
-        # L'action est-elle un mouvement (0, 1, 2, 3) ?
         if desired_action not in [0, 1, 2, 3]:
-            return desired_action # Si c'est Collecter/Recharger, pas de glissement
+            return desired_action
         
         if random.random() < self.slippage_chance:
-            # Glissement : Choisir une action aléatoire parmi les 4 mouvements
-            actual_move = random.choice([0, 1, 2, 3])
-            return actual_move
+            return random.choice([0, 1, 2, 3])
         else:
-            return desired_action # Mouvement souhaité effectué
+            return desired_action
 
     def step(self, action_idx):
         """
-        Actions: 0: Haut, 1: Bas, 2: Gauche, 3: Droite, 4: Collecter, 5: Recharger
-        Retourne: feature_vector, reward, done
+        Executes one action step.
+        Returns: (feature_vector, reward, done)
         """
         r, c = self.rover_pos
-        reward = -1 # Pénalité de temps (step cost)
+        reward = -1  # Time penalty
         done = False
+        energy_cost = 1  # Base cost per step
         
-        energy_cost = 1
-        
-        # --- 1. DÉTERMINER L'ACTION RÉELLE (STOCHASTICITÉ) ---
+        # Determine actual action after slippage
         actual_action = self._determine_actual_move(action_idx)
 
         new_r, new_c = r, c
         
-        # --- 2. EXÉCUTION DE L'ACTION RÉELLE ---
+        # Movement actions
         if actual_action == 0: new_r = max(0, r - 1)
         elif actual_action == 1: new_r = min(self.rows - 1, r + 1)
         elif actual_action == 2: new_c = max(0, c - 1)
         elif actual_action == 3: new_c = min(self.cols - 1, c + 1)
         
-        # Action COLLECTER (seulement si l'action désirée était 4)
-        elif action_idx == 4: # On pénalise l'énergie si l'agent voulait forer
+        # Collect action (only triggered if agent intended to Collect)
+        elif action_idx == 4:
             energy_cost = 5
             if self.grid[r, c] == SAMPLE and self.payload < self.max_payload:
-                reward += 50
+                sample_reward = self.sample_rewards.pop((r, c), 50)
+                reward += sample_reward
                 self.grid[r, c] = EMPTY
                 self.payload += 1
             else:
                 reward -= 5
         
-        # Action RECHARGER (seulement si l'action désirée était 5)
+        # Recharge action
         elif action_idx == 5:
-            energy_cost = 5 # Coût de l'attente
+            energy_cost = 5  # Time spent waiting
             if self.grid[r, c] == BASE:
-                energy_gain = min(100, self.max_energy - self.energy) 
-                energy_cost = -energy_gain # Gain net
+                energy_gain = min(100, self.max_energy - self.energy)
+                energy_cost = -energy_gain
             else:
                 reward -= 10
         
-        # --- 3. MISE À JOUR DE L'ÉTAT ET VÉRIFICATIONS ---
-        
-        # Mise à jour de la position APRÈS le mouvement
+        # Update position after move
         self.rover_pos = (new_r, new_c)
         r, c = self.rover_pos
 
-        # Vérification du terrain (si l'action était un mouvement)
-        if action_idx in [0, 1, 2, 3]: 
-            if self.grid[r, c] == OBSTACLE:
-                reward -= 20 
-                energy_cost += 10 
+        # Penalties for entering obstacles
+        if action_idx in [0, 1, 2, 3]:
+            if self.grid[r, c] == CRATER:
+                reward -= 25
+                energy_cost += 15
+            elif self.grid[r, c] == SLOPE:
+                reward -= 15
+                energy_cost += 5
         
-        # Gestion de l'énergie (min pour le plafond max_energy)
+        # Update energy
         self.energy = min(self.max_energy, self.energy - energy_cost)
         
-       if self.energy <= 0:
-        done = True
-       if self.rover_pos == self.base_pos:
-        reward += 50  # success at home
-       else:
-        reward -= 100
-
-            
-        # Remplacement de get_state_dict() par get_feature_vector()
+        # Energy depleted → episode ends
+        if self.energy <= 0:
+            done = True
+            if self.rover_pos == self.base_pos:
+                # Success: rover returned home before shutdown
+                reward += 50
+            else:
+                # Failure: rover died away from home
+                reward -= 100
+        
         return self.get_feature_vector(), reward, done
 
     def reset(self):
+        """ Resets rover position, energy, and payload for a new episode. """
         self.rover_pos = self.start_pos
         self.energy = self.max_energy
         self.payload = 0
-        # Retourne le vecteur de features initial
         return self.get_feature_vector()
+
